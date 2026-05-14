@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Cardpull — Split the bill, skip the nagging</title>
+<meta name="description" content="Pull the card, send one link, get paid back. No app required." />
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root { color-scheme: light; }
+  html, body { -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
+                 Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+    background: #fafaf7;
+  }
+  /* Subtle paper texture */
+  .paper {
+    background-image:
+      radial-gradient(rgba(0,0,0,0.025) 1px, transparent 1px);
+    background-size: 18px 18px;
+  }
+  .btn-primary {
+    background: linear-gradient(180deg, #111 0%, #000 100%);
+    color: white;
+  }
+  .btn-primary:active { transform: translateY(1px); }
+  input, button { font: inherit; }
+  /* Hide number spinners */
+  input[type=number]::-webkit-outer-spin-button,
+  input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type=number] { -moz-appearance: textfield; }
+</style>
+</head>
+<body class="paper min-h-screen text-stone-900">
+
+<div id="app" class="mx-auto max-w-md px-5 pt-6 pb-24"></div>
+
+<script>
+/* =========================================================================
+   CARDPULL v0
+   - Single HTML file, no build step, no backend.
+   - Splits are encoded into the URL hash (base64-encoded JSON).
+   - Two views, controlled by the hash:
+       no hash      -> "Create a split" form
+       hash present -> "View your split" page (what each person owes + pay links)
+   ========================================================================= */
+
+const $ = (sel, root=document) => root.querySelector(sel);
+const el = (tag, attrs={}, ...children) => {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'class') node.className = v;
+    else if (k.startsWith('on') && typeof v === 'function') node.addEventListener(k.slice(2).toLowerCase(), v);
+    else if (v !== false && v != null) node.setAttribute(k, v);
+  }
+  for (const c of children.flat()) {
+    if (c == null || c === false) continue;
+    node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+  }
+  return node;
+};
+
+/* --- URL encode/decode (URL-safe base64 of JSON) ----------------------- */
+function encodeSplit(obj) {
+  const json = JSON.stringify(obj);
+  const b64 = btoa(unescape(encodeURIComponent(json)));
+  return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function decodeSplit(str) {
+  try {
+    const b64 = str.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '='.repeat((4 - b64.length % 4) % 4);
+    const json = decodeURIComponent(escape(atob(padded)));
+    return JSON.parse(json);
+  } catch (e) { return null; }
+}
+
+/* --- Money helpers ------------------------------------------------------ */
+const fmt = (n) => '$' + (Math.round(n * 100) / 100).toFixed(2);
+const cents = (n) => Math.round(Number(n) * 100) || 0;
+const fromCents = (c) => c / 100;
+
+/* --- Payment deeplinks -------------------------------------------------- */
+function payLinks(payer, amount, note) {
+  // payer = { venmo, cashapp, zelle } strings (any may be empty)
+  const amt = (Math.round(amount * 100) / 100).toFixed(2);
+  const links = [];
+  if (payer.venmo) {
+    const v = payer.venmo.replace(/^@/, '');
+    links.push({
+      label: 'Pay with Venmo',
+      // Venmo deep link works on iOS/Android; web fallback for desktop.
+      href: `https://venmo.com/${encodeURIComponent(v)}?txn=pay&amount=${amt}&note=${encodeURIComponent(note)}`,
+      color: 'bg-[#3D95CE] text-white',
+    });
+  }
+  if (payer.cashapp) {
+    const c = payer.cashapp.replace(/^\$/, '');
+    links.push({
+      label: 'Pay with Cash App',
+      href: `https://cash.app/$${encodeURIComponent(c)}/${amt}`,
+      color: 'bg-[#00D632] text-white',
+    });
+  }
+  if (payer.zelle) {
+    // Zelle has no universal deep link; this opens a mailto so they have the email handy.
+    links.push({
+      label: `Zelle to ${payer.zelle}`,
+      href: `mailto:?subject=Zelle%20payment&body=Send%20${amt}%20via%20Zelle%20to%20${encodeURIComponent(payer.zelle)}`,
+      color: 'bg-[#6D1ED4] text-white',
+    });
+  }
+  return links;
+}
+
+/* =========================================================================
+   STATE — only used on the create-split screen
+   ========================================================================= */
+const state = {
+  description: '',
+  totalCents: 0,         // pre-tip subtotal in cents
+  tipPercent: 18,        // default
+  people: [],            // [{name}]
+  payer: { name: '', venmo: '', cashapp: '', zelle: '' },
+};
+
+/* =========================================================================
+   ROUTER
+   ========================================================================= */
+function render() {
+  const hash = location.hash.replace(/^#/, '');
+  const app = $('#app');
+  app.innerHTML = '';
+  if (!hash) {
+    app.appendChild(renderCreate());
+  } else {
+    const data = decodeSplit(hash);
+    if (!data) {
+      app.appendChild(renderError('That link looks broken. Ask whoever sent it to send a fresh one.'));
+    } else {
+      app.appendChild(renderView(data));
+    }
+  }
+}
+window.addEventListener('hashchange', render);
+
+/* =========================================================================
+   VIEW: CREATE SPLIT
+   ========================================================================= */
+function renderCreate() {
+  const root = el('div', { class: 'space-y-7' });
+
+  // Header
+  root.appendChild(el('header', { class: 'pt-2 pb-1' },
+    el('div', { class: 'flex items-baseline justify-between' },
+      el('h1', { class: 'text-2xl font-semibold tracking-tight' }, 'Cardpull'),
+      el('span', { class: 'text-xs text-stone-400 uppercase tracking-widest' }, 'v0'),
+    ),
+    el('p', { class: 'text-stone-500 text-sm mt-1' },
+      'Pull the card, send one link, get paid back.'),
+  ));
+
+  // Description
+  root.appendChild(field('What was it?', el('input', {
+    type: 'text', placeholder: 'Dinner at Lucia’s',
+    class: inputClass(),
+    oninput: e => state.description = e.target.value,
+  })));
+
+  // Total
+  root.appendChild(field('Subtotal (before tip)',
+    moneyInput(state.totalCents, v => { state.totalCents = v; updateSummary(); })));
+
+  // Tip
+  const tipWrap = el('div', { class: 'space-y-2' });
+  tipWrap.appendChild(el('div', { class: 'text-sm font-medium text-stone-700' }, 'Tip'));
+  const tipRow = el('div', { class: 'flex gap-2' });
+  for (const pct of [0, 15, 18, 20, 22, 25]) {
+    const btn = el('button', {
+      type: 'button',
+      class: tipBtnClass(pct === state.tipPercent),
+      onclick: () => { state.tipPercent = pct; render(); /* re-render to refresh active state */ },
+    }, pct + '%');
+    tipRow.appendChild(btn);
+  }
+  tipWrap.appendChild(tipRow);
+  root.appendChild(tipWrap);
+
+  // People
+  root.appendChild(peopleSection());
+
+  // Payer info
+  root.appendChild(payerSection());
+
+  // Live summary
+  root.appendChild(summarySection());
+
+  // Generate
+  const generate = el('button', {
+    type: 'button',
+    class: 'btn-primary w-full rounded-2xl py-4 text-base font-semibold shadow-sm active:shadow-none disabled:opacity-40',
+    onclick: onGenerate,
+  }, 'Generate share link');
+  root.appendChild(generate);
+
+  // Footer note
+  root.appendChild(el('p', { class: 'text-xs text-stone-400 text-center pt-2' },
+    'No accounts. The split lives in the link itself.'));
+
+  return root;
+}
+
+function field(label, control) {
+  return el('label', { class: 'block space-y-2' },
+    el('span', { class: 'text-sm font-medium text-stone-700 block' }, label),
+    control);
+}
+
+function inputClass(extra='') {
+  return 'w-full rounded-xl border border-stone-200 bg-white px-4 py-3 ' +
+         'text-base placeholder:text-stone-400 ' +
+         'focus:border-stone-900 focus:ring-0 outline-none ' + extra;
+}
+
+function tipBtnClass(active) {
+  return 'flex-1 rounded-xl border px-2 py-2.5 text-sm font-medium transition ' +
+    (active
+      ? 'bg-stone-900 text-white border-stone-900'
+      : 'bg-white text-stone-700 border-stone-200 active:bg-stone-100');
+}
+
+function moneyInput(initialCents, onChangeCents) {
+  const input = el('input', {
+    type: 'number', inputmode: 'decimal', step: '0.01', placeholder: '0.00',
+    class: inputClass('pl-8 text-lg tabular-nums'),
+    value: initialCents ? (initialCents/100).toFixed(2) : '',
+    oninput: e => onChangeCents(cents(e.target.value)),
+  });
+  return el('div', { class: 'relative' },
+    el('span', { class: 'absolute left-4 top-1/2 -translate-y-1/2 text-stone-500 text-lg' }, '$'),
+    input);
+}
+
+function peopleSection() {
+  const wrap = el('div', { class: 'space-y-2' });
+  wrap.appendChild(el('div', { class: 'flex items-center justify-between' },
+    el('div', { class: 'text-sm font-medium text-stone-700' }, 'Who was there?'),
+    el('div', { class: 'text-xs text-stone-400' }, state.people.length + (state.people.length === 1 ? ' person' : ' people')),
+  ));
+
+  const list = el('div', { class: 'space-y-2' });
+  state.people.forEach((p, i) => {
+    list.appendChild(el('div', { class: 'flex gap-2' },
+      el('input', {
+        type: 'text', placeholder: 'Name',
+        class: inputClass(),
+        value: p.name,
+        oninput: e => { state.people[i].name = e.target.value; updateSummary(); },
+      }),
+      el('button', {
+        type: 'button',
+        class: 'shrink-0 rounded-xl border border-stone-200 bg-white px-3 text-stone-500 active:bg-stone-100',
+        'aria-label': 'Remove',
+        onclick: () => { state.people.splice(i, 1); render(); },
+      }, '✕'),
+    ));
+  });
+  wrap.appendChild(list);
+
+  wrap.appendChild(el('button', {
+    type: 'button',
+    class: 'w-full rounded-xl border border-dashed border-stone-300 bg-white/60 py-3 text-sm text-stone-600 active:bg-stone-100',
+    onclick: () => { state.people.push({ name: '' }); render(); },
+  }, '+ Add person'));
+
+  return wrap;
+}
+
+function payerSection() {
+  const wrap = el('div', { class: 'space-y-3 rounded-2xl bg-white border border-stone-200 p-4' });
+  wrap.appendChild(el('div', { class: 'text-sm font-medium text-stone-700' }, 'Where should they pay you?'));
+  wrap.appendChild(el('p', { class: 'text-xs text-stone-500 -mt-1' },
+    'Add at least one. People pay through whichever app they already have.'));
+  wrap.appendChild(handleInput('Your name (or nickname)', state.payer.name, 'Neil', v => state.payer.name = v));
+  wrap.appendChild(handleInput('Venmo username', state.payer.venmo, '@neil', v => state.payer.venmo = v));
+  wrap.appendChild(handleInput('Cash App $cashtag', state.payer.cashapp, '$neil', v => state.payer.cashapp = v));
+  wrap.appendChild(handleInput('Zelle email or phone', state.payer.zelle, 'neil@email.com', v => state.payer.zelle = v));
+  return wrap;
+}
+
+function handleInput(label, value, placeholder, onChange) {
+  return el('label', { class: 'block' },
+    el('span', { class: 'text-xs text-stone-500 block mb-1' }, label),
+    el('input', {
+      type: 'text', placeholder, value: value || '',
+      class: inputClass(),
+      oninput: e => onChange(e.target.value),
+    }));
+}
+
+function summarySection() {
+  const tipCents = Math.round(state.totalCents * state.tipPercent / 100);
+  const grand = state.totalCents + tipCents;
+  const n = Math.max(1, state.people.length);
+  const perCents = Math.floor(grand / n);
+  const remainder = grand - perCents * n;
+
+  const wrap = el('div', {
+    id: 'summary',
+    class: 'rounded-2xl bg-stone-900 text-white p-4 space-y-2 tabular-nums',
+  });
+  wrap.appendChild(el('div', { class: 'flex justify-between text-sm text-stone-300' },
+    el('span', {}, 'Subtotal'), el('span', {}, fmt(fromCents(state.totalCents)))));
+  wrap.appendChild(el('div', { class: 'flex justify-between text-sm text-stone-300' },
+    el('span', {}, `Tip (${state.tipPercent}%)`), el('span', {}, fmt(fromCents(tipCents)))));
+  wrap.appendChild(el('div', { class: 'flex justify-between text-base font-semibold pt-2 border-t border-stone-700' },
+    el('span', {}, 'Total'), el('span', {}, fmt(fromCents(grand)))));
+  wrap.appendChild(el('div', { class: 'flex justify-between text-sm text-stone-300 pt-2' },
+    el('span', {}, `Each (${state.people.length || 0})`),
+    el('span', {}, state.people.length ? fmt(fromCents(perCents)) + (remainder ? ` (±$0.0${remainder})` : '') : '—')));
+  return wrap;
+}
+function updateSummary() {
+  // Re-render only the summary for snappier typing.
+  const old = $('#summary');
+  if (!old) return;
+  const fresh = summarySection();
+  old.replaceWith(fresh);
+}
+
+/* --- Generate ---------------------------------------------------------- */
+function onGenerate() {
+  const errors = [];
+  if (state.totalCents <= 0) errors.push('Add a subtotal.');
+  if (state.people.filter(p => p.name.trim()).length < 1)
+    errors.push('Add at least one person.');
+  if (!state.payer.venmo && !state.payer.cashapp && !state.payer.zelle)
+    errors.push('Add at least one place for people to pay you (Venmo / Cash App / Zelle).');
+
+  if (errors.length) {
+    alert(errors.join('\n'));
+    return;
+  }
+
+  const tipCents = Math.round(state.totalCents * state.tipPercent / 100);
+  const data = {
+    v: 1,
+    d: state.description.trim(),
+    s: state.totalCents,
+    t: tipCents,
+    tp: state.tipPercent,
+    p: state.people.map(p => p.name.trim()).filter(Boolean),
+    payer: {
+      n: state.payer.name.trim(),
+      v: state.payer.venmo.trim(),
+      c: state.payer.cashapp.trim(),
+      z: state.payer.zelle.trim(),
+    },
+    ts: Date.now(),
+  };
+  const hash = encodeSplit(data);
+  const url = location.origin + location.pathname + '#' + hash;
+
+  // Show share UI
+  showShareModal(url, data);
+}
+
+function showShareModal(url, data) {
+  const overlay = el('div', {
+    class: 'fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-4',
+    onclick: (e) => { if (e.target === overlay) overlay.remove(); },
+  });
+  const card = el('div', {
+    class: 'w-full max-w-md bg-white rounded-3xl p-6 space-y-4 shadow-2xl',
+  });
+  card.appendChild(el('div', { class: 'flex items-center justify-between' },
+    el('h2', { class: 'text-lg font-semibold' }, 'Send this to the group'),
+    el('button', {
+      type: 'button', class: 'text-stone-400 text-2xl leading-none',
+      onclick: () => overlay.remove(),
+    }, '×'),
+  ));
+
+  const total = data.s + data.t;
+  const per = Math.floor(total / data.p.length);
+  const previewText =
+    `${data.payer.n || 'I'} pulled the card${data.d ? ` for ${data.d}` : ''}. ` +
+    `Y'all owe ~${fmt(fromCents(per))} each. Pay here: ${url}`;
+
+  card.appendChild(el('div', { class: 'rounded-2xl bg-stone-50 border border-stone-200 p-3' },
+    el('div', { class: 'text-xs text-stone-500 mb-1' }, 'Suggested message'),
+    el('div', { class: 'text-sm text-stone-800 whitespace-pre-wrap break-words' }, previewText),
+  ));
+
+  const copyBtn = el('button', {
+    type: 'button',
+    class: 'w-full btn-primary rounded-2xl py-3.5 text-sm font-semibold',
+    onclick: async () => {
+      try {
+        await navigator.clipboard.writeText(previewText);
+        copyBtn.textContent = 'Copied ✓';
+        setTimeout(() => copyBtn.textContent = 'Copy message', 1800);
+      } catch {
+        // Fallback: select the URL for manual copy
+        prompt('Copy this:', previewText);
+      }
+    },
+  }, 'Copy message');
+
+  const shareBtn = el('button', {
+    type: 'button',
+    class: 'w-full rounded-2xl py-3.5 text-sm font-semibold border border-stone-200 bg-white active:bg-stone-100',
+    onclick: async () => {
+      if (navigator.share) {
+        try { await navigator.share({ title: 'Cardpull', text: previewText, url }); }
+        catch {}
+      } else {
+        prompt('Copy this:', url);
+      }
+    },
+  }, navigator.share ? 'Share via…' : 'Copy link only');
+
+  card.appendChild(copyBtn);
+  card.appendChild(shareBtn);
+
+  card.appendChild(el('button', {
+    type: 'button',
+    class: 'w-full text-center text-xs text-stone-500 underline pt-1',
+    onclick: () => { overlay.remove(); location.hash = encodeSplit(data); },
+  }, 'Preview what people see →'));
+
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+}
+
+/* =========================================================================
+   VIEW: SPLIT (the page recipients see)
+   ========================================================================= */
+function renderView(data) {
+  const root = el('div', { class: 'space-y-6' });
+
+  const total = (data.s || 0) + (data.t || 0);
+  const people = data.p || [];
+  const perCents = people.length ? Math.floor(total / people.length) : 0;
+  const remainderCents = total - perCents * people.length;
+
+  // Header
+  root.appendChild(el('header', { class: 'pt-2' },
+    el('div', { class: 'text-xs uppercase tracking-widest text-stone-400' }, 'Cardpull'),
+    el('h1', { class: 'text-2xl font-semibold mt-1 leading-tight' },
+      `${data.payer?.n || 'Someone'} pulled the card`,
+      data.d ? el('span', { class: 'text-stone-500 font-normal' }, ` for ${data.d}`) : null,
+    ),
+    el('div', { class: 'mt-2 text-stone-500 text-sm tabular-nums' },
+      `Total ${fmt(fromCents(total))} (${fmt(fromCents(data.s))} + ${data.tp || 0}% tip), ${people.length} ${people.length === 1 ? 'person' : 'people'}.`,
+    ),
+  ));
+
+  // Per-person buttons
+  const list = el('div', { class: 'space-y-2' });
+  people.forEach((name, i) => {
+    // Distribute remainder cents across the first `remainderCents` people.
+    const owed = perCents + (i < remainderCents ? 1 : 0);
+    list.appendChild(personRow(name, owed, data.payer || {}, data.d || ''));
+  });
+  root.appendChild(list);
+
+  // Footer / branding
+  root.appendChild(el('div', { class: 'pt-6 text-center space-y-2' },
+    el('a', {
+      href: location.pathname,
+      class: 'inline-block text-xs text-stone-500 underline',
+    }, 'Make your own split →'),
+  ));
+
+  return root;
+}
+
+function personRow(name, owedCents, payer, description) {
+  const links = payLinks(
+    { venmo: payer.v, cashapp: payer.c, zelle: payer.z },
+    fromCents(owedCents),
+    description || 'Cardpull',
+  );
+
+  const row = el('div', {
+    class: 'rounded-2xl bg-white border border-stone-200 p-4 space-y-3',
+  });
+  row.appendChild(el('div', { class: 'flex items-center justify-between' },
+    el('div', { class: 'text-base font-semibold' }, name || 'Friend'),
+    el('div', { class: 'text-base font-semibold tabular-nums' }, fmt(fromCents(owedCents))),
+  ));
+  if (links.length === 0) {
+    row.appendChild(el('div', { class: 'text-xs text-stone-500' },
+      'No payment method set up. Ask the card-puller how to pay.'));
+  } else {
+    const btnRow = el('div', { class: 'grid grid-cols-1 gap-2' });
+    for (const link of links) {
+      btnRow.appendChild(el('a', {
+        href: link.href, target: '_blank', rel: 'noopener',
+        class: `block text-center rounded-xl py-3 text-sm font-semibold ${link.color}`,
+      }, link.label));
+    }
+    row.appendChild(btnRow);
+  }
+  return row;
+}
+
+/* =========================================================================
+   ERROR
+   ========================================================================= */
+function renderError(msg) {
+  return el('div', { class: 'pt-12 text-center space-y-3' },
+    el('div', { class: 'text-4xl' }, '💸'),
+    el('div', { class: 'text-stone-600' }, msg),
+    el('a', { href: location.pathname, class: 'inline-block text-sm text-stone-900 underline' },
+      'Start a new split'),
+  );
+}
+
+/* --- Boot -------------------------------------------------------------- */
+render();
+</script>
+</body>
+</html>
