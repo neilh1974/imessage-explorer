@@ -56,7 +56,8 @@ def build_contact_map():
     if not db_path or not os.path.exists(db_path):
         return {}
 
-    tmp = tempfile.mktemp(suffix=".abcddb")
+    fd, tmp = tempfile.mkstemp(suffix=".abcddb")
+    os.close(fd)
     try:
         shutil.copy2(db_path, tmp)
         conn = sqlite3.connect(tmp)
@@ -121,7 +122,8 @@ def get_db_copy():
     src = os.path.expanduser("~/Library/Messages/chat.db")
     if not os.path.exists(src):
         raise FileNotFoundError("chat.db not found. Grant Full Disk Access to Terminal in System Settings.")
-    tmp = tempfile.mktemp(suffix=".db")
+    fd, tmp = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
     shutil.copy2(src, tmp)
     return tmp
 
@@ -140,6 +142,8 @@ def fmt(dt, short=False):
     if short:
         if dt.date() == datetime.now().date():
             return dt.strftime("%I:%M %p").lstrip("0")
+        if dt.year != datetime.now().year:
+            return dt.strftime("%b %d, %Y")
         return dt.strftime("%b %d")
     return dt.strftime("%b %d, %Y · %I:%M %p")
 
@@ -224,15 +228,20 @@ def get_conversation(msg_id):
     chat_rows = run_query("SELECT COALESCE(display_name,'') as name FROM chat WHERE rowid = ?", (chat_id,))
     chat_name = chat_rows[0]["name"] if chat_rows else ""
 
-    msgs = run_query("""
+    # Build reaction-filter conditions (same logic as search_messages)
+    reaction_conditions = " ".join(["AND m.text NOT LIKE ?" for _ in REACTION_PREFIXES])
+    reaction_params = [f'{p}"%' for p in REACTION_PREFIXES]
+
+    msgs = run_query(f"""
         SELECT m.rowid AS id, m.text, m.date AS apple_date, m.is_from_me, h.id AS handle
         FROM message m
         LEFT JOIN handle h              ON m.handle_id  = h.rowid
         LEFT JOIN chat_message_join cmj ON m.rowid      = cmj.message_id
         WHERE cmj.chat_id = ?
           AND m.text IS NOT NULL AND length(trim(m.text)) > 0
+          {reaction_conditions}
         ORDER BY m.date ASC
-    """, (chat_id,))
+    """, (chat_id, *reaction_params))
 
     results = []
     first_contact = None
@@ -636,8 +645,9 @@ async function loadMemories(){
     const res  = await fetch('/api/memories')
     const data = await res.json()
     if(data.error) throw new Error(data.error)
+    memLoaded = true
     if(!data.memories.length){
-      el.innerHTML = '<div class="empty"><h3>No memories yet</h3><p>Come back after you\'ve been using iMessage for a year!</p></div>'
+      el.innerHTML = '<div class="empty"><h3>No memories found</h3><p>No messages were found from this time in past years. If you have older messages, make sure Terminal has Full Disk Access in System Settings → Privacy &amp; Security.</p></div>'
       return
     }
     el.innerHTML = data.memories.map(m=>`
@@ -647,7 +657,6 @@ async function loadMemories(){
         ${renderCards(m.messages, null, 'openMemConv')}
       </div>
     `).join('')
-    memLoaded = true
   } catch(e){
     el.innerHTML = `<div class="empty"><h3>Error</h3><p>${esc(e.message)}</p></div>`
   }
@@ -670,7 +679,7 @@ async function openMemConv(msgId, cardEl){
     document.getElementById('mem-conv-name').textContent  = data.chat_name
     document.getElementById('mem-conv-count').textContent = data.messages.length+' messages'
     document.getElementById('mem-bubbles').innerHTML = renderBubbles(data.messages, msgId)
-    const target = document.getElementById('bubble-'+msgId)
+    const target = document.getElementById('mem-bubbles').querySelector('[id="bubble-'+msgId+'"]')
     if(target) target.scrollIntoView({behavior:'smooth', block:'center'})
   } catch(e){
     document.getElementById('mem-bubbles').innerHTML = `<div class="empty"><p>${esc(e.message)}</p></div>`
