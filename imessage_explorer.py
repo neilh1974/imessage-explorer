@@ -1,17 +1,12 @@
 #!/usr/bin/env python3
-"""
-iMessage Explorer
-Search your iMessage history by keyword, contact, or date.
-Click any message to open the full conversation thread.
-
-SETUP (first time only):
-  1. pip3 install flask
-  2. System Settings → Privacy & Security → Full Disk Access → add Terminal
-  3. python3 imessage_explorer.py
-  4. Open http://localhost:5001
-"""
+# iMessage Explorer
+# search messages by keyword, contact, or date range
+#
+# requires: pip3 install flask
+# Terminal needs Full Disk Access: System Settings > Privacy & Security
 
 import sqlite3, shutil, os, tempfile, json
+import glob, re
 from datetime import datetime, timedelta
 
 try:
@@ -25,24 +20,19 @@ except ImportError:
 APPLE_EPOCH = 978307200
 PORT = 5001
 
-# ── Your own identifiers ──────────────────────────────────────────────────────
-# Add your phone number and any Apple ID emails here.
-# Messages from these handles will be treated as sent by you.
+# add your own email/phone here so your messages show as "Me"
 MY_HANDLES = {
     "neilhe74@gmail.com",
-    # "+12025551234",   # uncomment and add your number if needed
+    # "+12025551234",
 }
 
-# ── Contact name lookup ───────────────────────────────────────────────────────
-import glob, re
 
 def _normalize_phone(raw):
-    """Strip everything except digits, keep last 10."""
     digits = re.sub(r'\D', '', raw)
     return digits[-10:] if len(digits) >= 10 else digits
 
 def build_contact_map():
-    """Return dict mapping handle (email or normalized phone) → display name."""
+    # pull contact names out of AddressBook so handles show as real names
     patterns = [
         os.path.expanduser("~/Library/Application Support/AddressBook/AddressBook-v22.abcddb"),
         os.path.expanduser("~/Library/Application Support/AddressBook/Sources/*/AddressBook-v22.abcddb"),
@@ -63,7 +53,7 @@ def build_contact_map():
         conn = sqlite3.connect(tmp)
         conn.row_factory = sqlite3.Row
 
-        # Build rowid → full name map
+        # rowid → display name
         names = {}
         for r in conn.execute("""
             SELECT Z_PK,
@@ -100,7 +90,6 @@ def build_contact_map():
 _CONTACT_MAP = None
 
 def get_contact_name(handle):
-    """Resolve a handle (email or phone number) to a contact name."""
     global _CONTACT_MAP
     if _CONTACT_MAP is None:
         _CONTACT_MAP = build_contact_map()
@@ -117,7 +106,7 @@ REACTION_PREFIXES = (
     "Loved ", "Liked ", "Disliked ", "Laughed at ", "Emphasized ", "Questioned ",
 )
 
-# ── DB helpers ────────────────────────────────────────────────────────────────
+
 def get_db_copy():
     src = os.path.expanduser("~/Library/Messages/chat.db")
     if not os.path.exists(src):
@@ -130,6 +119,7 @@ def get_db_copy():
 def to_dt(apple_ts):
     if not apple_ts:
         return None
+    # nanoseconds since 2001-01-01 on newer OS, seconds on older
     secs = apple_ts / 1e9 if apple_ts > 1e13 else float(apple_ts)
     try:
         return datetime.fromtimestamp(secs + APPLE_EPOCH)
@@ -159,7 +149,6 @@ def run_query(sql, params=()):
         try: os.unlink(db)
         except: pass
 
-# ── Data functions ────────────────────────────────────────────────────────────
 def search_messages(query=None, contact=None, start_date=None, end_date=None, limit=5000):
     sql = """
         SELECT
@@ -219,7 +208,7 @@ def search_messages(query=None, contact=None, start_date=None, end_date=None, li
 
 
 def get_conversation(msg_id):
-    """Return all messages in the same chat as msg_id, ordered oldest→newest."""
+    """All messages in the same chat thread, oldest first."""
     rows = run_query("SELECT chat_id FROM chat_message_join WHERE message_id = ?", (msg_id,))
     if not rows:
         return "Unknown", []
@@ -228,7 +217,7 @@ def get_conversation(msg_id):
     chat_rows = run_query("SELECT COALESCE(display_name,'') as name FROM chat WHERE rowid = ?", (chat_id,))
     chat_name = chat_rows[0]["name"] if chat_rows else ""
 
-    # Build reaction-filter conditions (same logic as search_messages)
+    # filter out tapbacks same way search does
     reaction_conditions = " ".join(["AND m.text NOT LIKE ?" for _ in REACTION_PREFIXES])
     reaction_params = [f'{p}"%' for p in REACTION_PREFIXES]
 
@@ -275,7 +264,7 @@ def get_memories(years_back=8):
         except ValueError:
             continue
 
-        # Try progressively wider windows until we find messages
+        # widen the window until we find something
         msgs = []
         for days in [7, 30, 90, 183]:
             msgs = search_messages(
@@ -291,7 +280,6 @@ def get_memories(years_back=8):
     return out
 
 
-# ── HTML ──────────────────────────────────────────────────────────────────────
 HTML = r"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -303,34 +291,28 @@ HTML = r"""<!DOCTYPE html>
 body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text',sans-serif;
      background:#f5f5f7;color:#1d1d1f;height:100vh;display:flex;flex-direction:column;overflow:hidden}
 
-/* ── Header ── */
 .hdr{background:rgba(255,255,255,.9);backdrop-filter:blur(20px);
      border-bottom:1px solid rgba(0,0,0,.08);padding:12px 20px;
      display:flex;align-items:center;gap:16px;flex-shrink:0}
 .hdr h1{font-size:17px;font-weight:700}
 .hdr p{font-size:12px;color:#6e6e73}
 
-/* ── Tabs ── */
 .tabs{display:flex;gap:6px;padding:12px 20px 0;flex-shrink:0}
 .tab{padding:7px 16px;border-radius:20px;border:1px solid #d2d2d7;
      background:white;color:#6e6e73;cursor:pointer;font-size:13px;font-weight:500}
 .tab.active{background:#007aff;color:white;border-color:#007aff}
 
-/* ── Layout: two-pane ── */
 .workspace{display:flex;flex:1;overflow:hidden;gap:0}
 
-/* Left pane: search/results */
 .left-pane{display:flex;flex-direction:column;width:100%;flex-shrink:0;overflow:hidden;
            transition:width .25s ease}
 .left-pane.split{width:38%}
 
-/* Right pane: conversation */
 .right-pane{flex:1;display:flex;flex-direction:column;background:white;
             border-left:1px solid #e5e5ea;overflow:hidden;
             transform:translateX(100%);transition:transform .25s ease;width:0}
 .right-pane.open{transform:translateX(0);width:auto}
 
-/* Search bar */
 .bar{padding:12px 16px;display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;
      border-bottom:1px solid #e5e5ea;background:white;flex-shrink:0}
 .grp{display:flex;flex-direction:column;gap:3px}
@@ -346,11 +328,9 @@ input:focus{border-color:#007aff;background:white;box-shadow:0 0 0 3px rgba(0,12
 .btn-ghost{background:#f5f5f7;color:#1d1d1f;border:1px solid #d2d2d7}
 .btn-ghost:hover{background:#e5e5ea}
 
-/* Results list */
 .results{flex:1;overflow-y:auto;padding:8px}
 .count{font-size:12px;color:#6e6e73;padding:6px 8px}
 
-/* Message card */
 .card{padding:12px;border-radius:12px;margin-bottom:6px;cursor:pointer;
       border:1px solid rgba(0,0,0,.05);background:white;
       transition:background .1s,box-shadow .1s}
@@ -364,7 +344,6 @@ input:focus{border-color:#007aff;background:white;box-shadow:0 0 0 3px rgba(0,12
            display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .card-text em{background:#fff176;font-style:normal;border-radius:2px;padding:0 1px}
 
-/* ── Conversation pane ── */
 .conv-hdr{padding:12px 16px;border-bottom:1px solid #e5e5ea;display:flex;
           align-items:center;gap:10px;background:white;flex-shrink:0}
 .conv-back{background:none;border:none;color:#007aff;font-size:14px;cursor:pointer;
@@ -376,11 +355,9 @@ input:focus{border-color:#007aff;background:white;box-shadow:0 0 0 3px rgba(0,12
 .bubbles{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:4px;
          background:#f5f5f7}
 
-/* Date separator */
 .date-sep{text-align:center;font-size:11px;color:#6e6e73;
           margin:10px 0 6px;font-weight:500}
 
-/* Bubble row */
 .brow{display:flex;align-items:flex-end;gap:6px;margin:1px 0}
 .brow.me{flex-direction:row-reverse}
 
@@ -396,22 +373,18 @@ input:focus{border-color:#007aff;background:white;box-shadow:0 0 0 3px rgba(0,12
 
 .btime{font-size:10px;color:#8e8e93;white-space:nowrap;padding-bottom:2px}
 
-/* Empty / loading */
 .empty{text-align:center;padding:48px 20px;color:#6e6e73}
 .empty h3{font-size:16px;color:#1d1d1f;margin-bottom:6px}
 .loading{text-align:center;padding:40px;color:#6e6e73;font-size:14px}
 
-/* Memories */
 .mem-year{margin-bottom:28px}
 .mem-y-hdr{font-size:20px;font-weight:700;padding:0 8px 2px}
 .mem-y-sub{font-size:12px;color:#6e6e73;padding:0 8px 10px}
 
-/* Panels */
 #search-panel,#memories-panel{display:none;flex-direction:column;flex:1;overflow:hidden}
 #search-panel.active,#memories-panel.active{display:flex}
 .tab-content{flex:1;display:flex;flex-direction:column;overflow:hidden}
 
-/* Notice */
 .notice{background:#fff8e1;border-bottom:1px solid #ffe082;
         padding:10px 16px;font-size:12px;color:#795548;flex-shrink:0}
 </style>
@@ -432,7 +405,7 @@ input:focus{border-color:#007aff;background:white;box-shadow:0 0 0 3px rgba(0,12
 
 <div class="tab-content">
 
-<!-- ══ SEARCH TAB ══ -->
+<!-- search -->
 <div id="search-panel" class="active">
   <div class="notice">
     First run? If you see an error: System Settings → Privacy &amp; Security → Full Disk Access → add Terminal.
@@ -440,7 +413,6 @@ input:focus{border-color:#007aff;background:white;box-shadow:0 0 0 3px rgba(0,12
 
   <div class="workspace">
 
-    <!-- Left: search + results -->
     <div class="left-pane" id="left-pane">
       <div class="bar">
         <div class="grp">
@@ -467,7 +439,6 @@ input:focus{border-color:#007aff;background:white;box-shadow:0 0 0 3px rgba(0,12
       </div>
     </div>
 
-    <!-- Right: conversation thread -->
     <div class="right-pane" id="right-pane">
       <div class="conv-hdr">
         <button class="conv-back" onclick="closeConv()">← Back</button>
@@ -480,7 +451,7 @@ input:focus{border-color:#007aff;background:white;box-shadow:0 0 0 3px rgba(0,12
   </div>
 </div>
 
-<!-- ══ MEMORIES TAB ══ -->
+<!-- memories -->
 <div id="memories-panel">
   <div class="workspace">
     <div class="left-pane" id="mem-left">
@@ -502,7 +473,6 @@ input:focus{border-color:#007aff;background:white;box-shadow:0 0 0 3px rgba(0,12
 </div><!-- /tab-content -->
 
 <script>
-// ── Utilities ──────────────────────────────────────────────────────────────
 function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') }
 
 function highlight(text, q){
@@ -511,7 +481,6 @@ function highlight(text, q){
   return esc(text).replace(re,'<em>$1</em>')
 }
 
-// ── Tabs ───────────────────────────────────────────────────────────────────
 function showTab(name, btn){
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'))
   document.querySelectorAll('#search-panel,#memories-panel').forEach(p=>p.classList.remove('active'))
@@ -520,7 +489,6 @@ function showTab(name, btn){
   if(name==='memories') loadMemories()
 }
 
-// ── Search ─────────────────────────────────────────────────────────────────
 let activeCard = null
 
 function renderCards(msgs, q, clickFn){
@@ -572,7 +540,6 @@ function clearSearch(){
   doSearch()
 }
 
-// ── Conversation view ──────────────────────────────────────────────────────
 function fmtBubbleDate(iso){
   if(!iso) return ''
   const d = new Date(iso)
@@ -584,7 +551,6 @@ function renderBubbles(msgs, targetId){
   let html = ''
   let lastDate = null
   for(const m of msgs){
-    // Date separator
     const dayStr = m.date_iso ? m.date_iso.slice(0,10) : ''
     if(dayStr && dayStr !== lastDate){
       lastDate = dayStr
@@ -603,7 +569,6 @@ function renderBubbles(msgs, targetId){
 }
 
 async function openConv(msgId, cardEl){
-  // Highlight card
   if(activeCard) activeCard.classList.remove('active')
   activeCard = cardEl
   cardEl.classList.add('active')
@@ -621,7 +586,6 @@ async function openConv(msgId, cardEl){
     document.getElementById('conv-count').textContent = data.messages.length+' messages'
     document.getElementById('bubbles').innerHTML = renderBubbles(data.messages, msgId)
 
-    // Scroll to target bubble
     const target = document.getElementById('bubble-'+msgId)
     if(target) target.scrollIntoView({behavior:'smooth', block:'center'})
   } catch(e){
@@ -635,7 +599,6 @@ function closeConv(){
   if(activeCard){ activeCard.classList.remove('active'); activeCard=null }
 }
 
-// ── Memories ───────────────────────────────────────────────────────────────
 let memLoaded = false
 
 async function loadMemories(){
@@ -692,13 +655,11 @@ function closeMemConv(){
   if(activeMemCard){ activeMemCard.classList.remove('active'); activeMemCard=null }
 }
 
-// ── Boot ───────────────────────────────────────────────────────────────────
 doSearch()
 </script>
 </body>
 </html>"""
 
-# ── Flask routes ──────────────────────────────────────────────────────────────
 if USE_FLASK:
     app = Flask(__name__)
     app.json.sort_keys = False
@@ -773,7 +734,6 @@ if USE_FLASK:
             import traceback
             return f"<pre>Error: {e}\n{traceback.format_exc()}</pre>", 500
 
-# ── Stdlib fallback ───────────────────────────────────────────────────────────
 else:
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *a): pass
@@ -825,7 +785,6 @@ else:
             else:
                 self.send_response(404); self.end_headers()
 
-# ── Entry point ───────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     print(f"\n💬 iMessage Explorer → http://localhost:{PORT}\n")
     if USE_FLASK:

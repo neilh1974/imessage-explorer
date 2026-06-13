@@ -1,26 +1,14 @@
 #!/bin/bash
-# Double-click this file to start iMessage Explorer.
-# (If it won't open: right-click → Open the first time)
+# double-click to launch (right-click > Open the first time if blocked)
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP="$SCRIPT_DIR/imessage_explorer.py"
 
-echo ""
-echo "💬 iMessage Explorer"
-echo "────────────────────────────────────"
-
-# Install Flask if missing
 if ! python3 -c "import flask" 2>/dev/null; then
-    echo "⚙️  Installing Flask (one-time)..."
+    echo "installing Flask..."
     pip3 install flask --break-system-packages -q
 fi
 
-echo "✅ Starting server at http://localhost:5001"
-echo "   Opening browser in 2 seconds..."
-echo "   Press Ctrl+C here to stop."
-echo ""
-
-# Open browser after short delay
+echo "starting at http://localhost:5001  (Ctrl+C to stop)"
 (sleep 2 && open "http://localhost:5001") &
-
 python3 "$APP"
