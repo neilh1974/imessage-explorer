@@ -1,0 +1,940 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>iMessage4Me</title>
+  <meta name="description" content="A local Mac app for searching, preserving, and exporting your iMessage history.">
+  <style>
+    :root {
+      --bg: #f4f1ea;
+      --surface: #fffdf8;
+      --ink: #1a1d24;
+      --muted: #69707d;
+      --line: #e4dfd5;
+      --blue: #2364d2;
+      --blueSoft: #e9f0ff;
+      --green: #14855f;
+      --dark: #111827;
+      --shadow: 0 24px 80px rgba(26, 29, 36, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 12% 0%, rgba(35, 100, 210, 0.10), transparent 28%),
+        linear-gradient(140deg, #f7f3eb, #eef2f7 56%, #f7f4ee);
+      font-family: ui-sans-serif, system-ui, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .page {
+      overflow: hidden;
+    }
+
+    .nav {
+      width: min(1180px, calc(100% - 40px));
+      margin: 22px auto 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 760;
+      letter-spacing: 0;
+    }
+
+    .logo {
+      width: 42px;
+      height: 42px;
+      border-radius: 15px;
+      display: grid;
+      place-items: center;
+      color: white;
+      background: linear-gradient(145deg, #2364d2, #24a47c);
+      box-shadow: 0 14px 30px rgba(35, 100, 210, 0.22);
+      font-size: 20px;
+    }
+
+    .navlinks {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 650;
+    }
+
+    .navlinks a:hover {
+      color: var(--ink);
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      padding: 12px 18px;
+      font-weight: 720;
+      font-size: 14px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--ink);
+    }
+
+    .button.primary {
+      background: var(--blue);
+      color: white;
+      border-color: var(--blue);
+      box-shadow: 0 16px 34px rgba(35, 100, 210, 0.22);
+    }
+
+    .hero {
+      width: min(1180px, calc(100% - 40px));
+      margin: 82px auto 84px;
+      display: grid;
+      grid-template-columns: minmax(0, 0.86fr) minmax(500px, 1.14fr);
+      gap: 54px;
+      align-items: center;
+    }
+
+    .eyebrow {
+      color: var(--blue);
+      font-size: 12px;
+      font-weight: 820;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      font-size: clamp(48px, 7vw, 82px);
+      line-height: 0.94;
+      letter-spacing: 0;
+      max-width: 690px;
+    }
+
+    .hero p {
+      margin-top: 24px;
+      color: var(--muted);
+      font-size: 19px;
+      max-width: 620px;
+    }
+
+    .heroActions {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-top: 34px;
+      flex-wrap: wrap;
+    }
+
+    .privacyLine {
+      margin-top: 28px;
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      color: #315344;
+      background: rgba(255, 253, 248, 0.78);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 9px 13px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+    }
+
+    .mockShell {
+      background: rgba(255, 253, 248, 0.86);
+      border: 1px solid rgba(228, 223, 213, 0.95);
+      box-shadow: var(--shadow);
+      border-radius: 34px;
+      padding: 14px;
+    }
+
+    .mockApp {
+      display: grid;
+      grid-template-columns: 220px minmax(0, 1fr);
+      min-height: 620px;
+      overflow: hidden;
+      border-radius: 24px;
+      background: linear-gradient(145deg, #fffdf8, #f5f1e8);
+      border: 1px solid rgba(228, 223, 213, 0.85);
+    }
+
+    .mockSide {
+      padding: 18px;
+      border-right: 1px solid var(--line);
+      background: rgba(255, 253, 248, 0.78);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .mockBrand {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+
+    .mockBrand strong {
+      display: block;
+      line-height: 1.05;
+    }
+
+    .mockBrand span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 3px;
+    }
+
+    .navItem {
+      border-radius: 14px;
+      padding: 11px 12px;
+      color: var(--muted);
+      font-weight: 740;
+      font-size: 14px;
+    }
+
+    .navItem.active {
+      color: white;
+      background: var(--dark);
+      box-shadow: 0 18px 36px rgba(17, 24, 39, 0.18);
+    }
+
+    .switchRow {
+      margin-top: 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 12px;
+      font-size: 13px;
+      font-weight: 720;
+    }
+
+    .switch {
+      width: 39px;
+      height: 22px;
+      border-radius: 999px;
+      background: var(--blue);
+      position: relative;
+    }
+
+    .switch::after {
+      content: "";
+      position: absolute;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      right: 2px;
+      top: 2px;
+      background: white;
+      box-shadow: 0 3px 8px rgba(17, 24, 39, 0.24);
+    }
+
+    .localBox {
+      margin-top: auto;
+      background: var(--dark);
+      color: white;
+      border-radius: 18px;
+      padding: 14px;
+    }
+
+    .localBox strong {
+      display: block;
+      font-size: 13px;
+    }
+
+    .localBox span {
+      display: block;
+      margin-top: 5px;
+      color: #d1d5db;
+      font-size: 12px;
+    }
+
+    .mockMain {
+      padding: 22px;
+      min-width: 0;
+    }
+
+    .mockTitle {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      align-items: flex-start;
+      margin-bottom: 18px;
+    }
+
+    .mockTitle h3 {
+      font-size: 22px;
+      line-height: 1.05;
+      max-width: 500px;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 8px 11px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fffaf0;
+      color: #315344;
+      font-size: 12px;
+      font-weight: 780;
+      white-space: nowrap;
+    }
+
+    .filterBar {
+      display: grid;
+      grid-template-columns: 1.1fr 1fr 0.8fr 0.8fr 0.85fr auto;
+      gap: 10px;
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 12px;
+      box-shadow: 0 12px 28px rgba(26, 29, 36, 0.06);
+      margin-bottom: 16px;
+    }
+
+    .field label {
+      display: block;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 820;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 5px;
+    }
+
+    .inputFake {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fbfaf7;
+      padding: 9px 10px;
+      color: var(--muted);
+      font-size: 12px;
+      min-height: 38px;
+    }
+
+    .searchBtn {
+      align-self: end;
+      min-height: 38px;
+      border-radius: 10px;
+      background: var(--blue);
+      color: white;
+      display: grid;
+      place-items: center;
+      padding: 0 14px;
+      font-size: 13px;
+      font-weight: 750;
+    }
+
+    .resultGrid {
+      display: grid;
+      grid-template-columns: minmax(0, 0.95fr) minmax(280px, 1.05fr);
+      gap: 14px;
+      align-items: stretch;
+    }
+
+    .results {
+      display: grid;
+      gap: 9px;
+    }
+
+    .result {
+      background: rgba(255, 255, 255, 0.88);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 13px;
+    }
+
+    .resultTop {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--blue);
+      font-size: 12px;
+      font-weight: 820;
+      margin-bottom: 7px;
+    }
+
+    .badge {
+      color: var(--muted);
+      background: #f1eee7;
+      border-radius: 999px;
+      padding: 2px 7px;
+      font-size: 10px;
+    }
+
+    .result p {
+      color: var(--ink);
+      font-size: 13px;
+    }
+
+    .conversation {
+      background: linear-gradient(180deg, #faf8f3, #f3f6fb);
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      padding: 14px;
+      display: grid;
+      align-content: end;
+      gap: 10px;
+      min-height: 292px;
+    }
+
+    .bubble {
+      max-width: 78%;
+      padding: 10px 12px;
+      border-radius: 16px;
+      background: white;
+      box-shadow: 0 2px 8px rgba(26, 29, 36, 0.08);
+      font-size: 13px;
+    }
+
+    .bubble.me {
+      justify-self: end;
+      background: var(--blue);
+      color: white;
+    }
+
+    .mockFooter {
+      margin-top: 14px;
+      padding: 9px 4px 0;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 720;
+    }
+
+    section {
+      width: min(1080px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 82px 0;
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: 0.85fr 1.15fr;
+      gap: 56px;
+      align-items: start;
+    }
+
+    .sectionLabel {
+      color: var(--blue);
+      font-size: 12px;
+      font-weight: 820;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-bottom: 13px;
+    }
+
+    h2 {
+      font-size: clamp(34px, 5vw, 58px);
+      line-height: 1.02;
+      letter-spacing: 0;
+    }
+
+    .sectionCopy {
+      color: var(--muted);
+      font-size: 18px;
+      max-width: 650px;
+      margin-top: 18px;
+    }
+
+    .plainList {
+      display: grid;
+      gap: 14px;
+      margin-top: 8px;
+    }
+
+    .plainItem {
+      background: rgba(255, 253, 248, 0.74);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 18px;
+    }
+
+    .plainItem strong {
+      display: block;
+      font-size: 17px;
+      margin-bottom: 5px;
+    }
+
+    .plainItem span {
+      color: var(--muted);
+    }
+
+    .preserve {
+      background: var(--dark);
+      color: white;
+      width: min(1180px, calc(100% - 40px));
+      border-radius: 34px;
+      padding: 54px;
+      margin: 42px auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 42px;
+      box-shadow: var(--shadow);
+    }
+
+    .preserve .sectionLabel {
+      color: #93c5fd;
+    }
+
+    .preserve p,
+    .preserve span {
+      color: #d1d5db;
+    }
+
+    .quietGrid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .quietBlock {
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.06);
+      border-radius: 18px;
+      padding: 17px;
+      min-height: 112px;
+    }
+
+    .strip {
+      margin-top: 28px;
+      display: flex;
+      gap: 9px;
+      flex-wrap: wrap;
+    }
+
+    .chip {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 9px 13px;
+      color: var(--ink);
+      font-weight: 740;
+      font-size: 13px;
+    }
+
+    .privacyPanel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 30px;
+      padding: 30px;
+      box-shadow: 0 18px 48px rgba(26, 29, 36, 0.08);
+    }
+
+    .trustGrid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 22px;
+    }
+
+    .trust {
+      border: 1px solid var(--line);
+      border-radius: 17px;
+      padding: 15px;
+      background: #fbfaf7;
+      font-weight: 760;
+    }
+
+    .steps {
+      counter-reset: step;
+      display: grid;
+      gap: 14px;
+      margin-top: 28px;
+    }
+
+    .step {
+      counter-increment: step;
+      display: grid;
+      grid-template-columns: 42px 1fr;
+      gap: 14px;
+      align-items: start;
+      padding: 18px;
+      background: rgba(255, 253, 248, 0.72);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+    }
+
+    .step::before {
+      content: counter(step);
+      width: 42px;
+      height: 42px;
+      border-radius: 14px;
+      background: var(--blueSoft);
+      color: var(--blue);
+      display: grid;
+      place-items: center;
+      font-weight: 840;
+    }
+
+    .waitlist {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 34px;
+      padding: 46px;
+      box-shadow: var(--shadow);
+      display: grid;
+      grid-template-columns: 0.9fr 1.1fr;
+      gap: 42px;
+      align-items: start;
+    }
+
+    form {
+      display: grid;
+      gap: 12px;
+    }
+
+    input,
+    textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: #fbfaf7;
+      border-radius: 14px;
+      padding: 13px 14px;
+      font: inherit;
+      color: var(--ink);
+    }
+
+    textarea {
+      min-height: 118px;
+      resize: vertical;
+    }
+
+    .formNote {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    footer {
+      width: min(1180px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 44px 0 60px;
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      border-top: 1px solid var(--line);
+    }
+
+    footer strong {
+      color: var(--ink);
+    }
+
+    @media (max-width: 980px) {
+      .hero,
+      .split,
+      .preserve,
+      .waitlist {
+        grid-template-columns: 1fr;
+      }
+
+      .hero {
+        margin-top: 54px;
+      }
+
+      .mockApp {
+        grid-template-columns: 1fr;
+      }
+
+      .mockSide {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .filterBar,
+      .resultGrid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 680px) {
+      .nav {
+        align-items: flex-start;
+      }
+
+      .navlinks {
+        display: none;
+      }
+
+      h1 {
+        font-size: 47px;
+      }
+
+      .hero,
+      section,
+      .preserve,
+      footer {
+        width: min(100% - 24px, 1180px);
+      }
+
+      .mockShell {
+        padding: 8px;
+        border-radius: 24px;
+      }
+
+      .mockMain,
+      .mockSide,
+      .preserve,
+      .waitlist {
+        padding: 22px;
+      }
+
+      .quietGrid,
+      .trustGrid {
+        grid-template-columns: 1fr;
+      }
+
+      footer {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <nav class="nav" aria-label="Main navigation">
+      <a class="brand" href="#">
+        <span class="logo" aria-hidden="true">●</span>
+        <span>iMessage4Me</span>
+      </a>
+      <div class="navlinks">
+        <a href="#search">Search</a>
+        <a href="#export">Export</a>
+        <a href="#privacy">Privacy</a>
+        <a href="#waitlist">Waitlist</a>
+      </div>
+    </nav>
+
+    <main>
+      <header class="hero">
+        <div>
+          <div class="eyebrow">Local Mac app</div>
+          <h1>Your iMessage history, finally yours again.</h1>
+          <p>Apple stores your messages locally, but makes them hard to search, preserve, and export. iMessage4Me gives you a private Mac app for finding the messages that matter and saving the conversations you cannot lose.</p>
+          <div class="heroActions">
+            <a class="button primary" href="#waitlist">Join the waitlist</a>
+            <a class="button" href="#privacy">How privacy works</a>
+          </div>
+          <div class="privacyLine"><span class="dot"></span> Everything stays on your Mac</div>
+        </div>
+
+        <div class="mockShell" aria-label="Product preview with fake messages">
+          <div class="mockApp">
+            <aside class="mockSide">
+              <div class="mockBrand">
+                <span class="logo" aria-hidden="true">●</span>
+                <div>
+                  <strong>iMessage4Me</strong>
+                  <span>Private archive workspace</span>
+                </div>
+              </div>
+              <div class="navItem active">Search</div>
+              <div class="navItem">Memories</div>
+              <div class="switchRow">
+                <span>Show SMS</span>
+                <span class="switch"></span>
+              </div>
+              <div class="localBox">
+                <strong>Local only</strong>
+                <span>No cloud, no API keys, no message uploads.</span>
+              </div>
+            </aside>
+
+            <div class="mockMain">
+              <div class="mockTitle">
+                <div>
+                  <div class="eyebrow">Private Archive</div>
+                  <h3>Your messages are stored locally and Apple makes them nearly impossible to access. iMessage4Me gives you your history back.</h3>
+                </div>
+                <span class="status"><span class="dot"></span> Local only</span>
+              </div>
+
+              <div class="filterBar">
+                <div class="field"><label>Keyword</label><div class="inputFake">photo</div></div>
+                <div class="field"><label>Contact</label><div class="inputFake">Mom</div></div>
+                <div class="field"><label>From</label><div class="inputFake">2020</div></div>
+                <div class="field"><label>To</label><div class="inputFake">Today</div></div>
+                <div class="field"><label>Attachment</label><div class="inputFake">Images</div></div>
+                <div class="searchBtn">Search</div>
+              </div>
+
+              <div class="resultGrid">
+                <div class="results">
+                  <article class="result">
+                    <div class="resultTop"><span>Maya Chen</span><span><span class="badge">iMessage</span> Today</span></div>
+                    <p>Dinner plans moved to seven. I saved the address in Maps.</p>
+                  </article>
+                  <article class="result">
+                    <div class="resultTop"><span>Mom</span><span><span class="badge">iMessage</span> May 9, 2022</span></div>
+                    <p>Found the old photos. I will send them later tonight.</p>
+                  </article>
+                  <article class="result">
+                    <div class="resultTop"><span>Bank Alert</span><span><span class="badge">SMS</span> Jun 14</span></div>
+                    <p>Your verification code is ready.</p>
+                  </article>
+                </div>
+                <div class="conversation">
+                  <div class="bubble">I found the old photos from that weekend.</div>
+                  <div class="bubble me">Please send them when you get a chance.</div>
+                  <div class="bubble">I will send them later tonight.</div>
+                </div>
+              </div>
+              <div class="mockFooter">Reading from ~/Library/Messages/chat.db · no network access.</div>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <section class="split">
+        <div>
+          <div class="sectionLabel">The problem</div>
+          <h2>Messages is where life happened. It should not be this hard to search.</h2>
+        </div>
+        <p class="sectionCopy">Native Messages search can return partial results, show only a few matches at a time, and miss messages people know exist. Exporting a full thread is awkward. Most people discover the problem when they urgently need to find or preserve something important.</p>
+      </section>
+
+      <section class="preserve">
+        <div>
+          <div class="sectionLabel">Preservation</div>
+          <h2>Built for conversations you cannot replace.</h2>
+          <p class="sectionCopy">Some message threads are not just data. They are a record of a parent, a partner, a close friend, a family moment, or a relationship that changed your life. iMessage4Me helps you preserve those conversations in a format you can actually read and keep.</p>
+        </div>
+        <div class="quietGrid">
+          <div class="quietBlock"><strong>Preserve a full conversation</strong><span>Save the whole thread, not scattered screenshots.</span></div>
+          <div class="quietBlock"><strong>Search by memory</strong><span>Find by phrase, date, person, or attachment.</span></div>
+          <div class="quietBlock"><strong>Export a readable copy</strong><span>Keep PDF, HTML, CSV, or plain text.</span></div>
+          <div class="quietBlock"><strong>Keep it on your Mac</strong><span>Your archive stays under your control.</span></div>
+        </div>
+      </section>
+
+      <section id="search" class="split">
+        <div>
+          <div class="sectionLabel">Search</div>
+          <h2>Full text search across your local message history.</h2>
+          <p class="sectionCopy">Search by keyword. Filter by contact. Narrow by date range. Filter by attachment type. Open full conversation context from any result.</p>
+        </div>
+        <div class="privacyPanel">
+          <div class="strip">
+            <span class="chip">Keyword</span>
+            <span class="chip">Contact</span>
+            <span class="chip">From</span>
+            <span class="chip">To</span>
+            <span class="chip">Attachment</span>
+            <span class="chip">Images</span>
+            <span class="chip">Videos</span>
+            <span class="chip">Audio</span>
+            <span class="chip">Files</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="export" class="split">
+        <div>
+          <div class="sectionLabel">Export</div>
+          <h2>Export should be core, not an afterthought.</h2>
+        </div>
+        <div>
+          <p class="sectionCopy">Save a full thread as PDF, HTML, CSV, or plain text. Export search results to CSV. Create readable archives for personal records, family history, or important memories.</p>
+          <div class="strip">
+            <span class="chip">PDF</span>
+            <span class="chip">HTML</span>
+            <span class="chip">CSV</span>
+            <span class="chip">Text</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="privacy" class="split">
+        <div>
+          <div class="sectionLabel">Privacy</div>
+          <h2>Private by design because messages are private by default.</h2>
+          <p class="sectionCopy">The Mac app reads a temporary local copy of the Messages database. Your original database is not modified. Message contents are not uploaded. Processing happens locally.</p>
+        </div>
+        <div class="privacyPanel">
+          <div class="privacyLine"><span class="dot"></span> Reading from ~/Library/Messages/chat.db · no network access.</div>
+          <div class="trustGrid">
+            <div class="trust">Local Mac processing</div>
+            <div class="trust">Read only access</div>
+            <div class="trust">No cloud storage</div>
+            <div class="trust">No message uploads</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="split">
+        <div>
+          <div class="sectionLabel">How it works</div>
+          <h2>Three steps, all on your Mac.</h2>
+          <p class="sectionCopy">Full Disk Access is required by macOS because Apple protects the Messages database.</p>
+        </div>
+        <div class="steps">
+          <div class="step"><div><strong>Install the Mac app.</strong><p>iMessage4Me runs locally.</p></div></div>
+          <div class="step"><div><strong>Grant Full Disk Access.</strong><p>This lets macOS allow local read access to Messages.</p></div></div>
+          <div class="step"><div><strong>Search, browse, and export.</strong><p>Find the conversations that matter and save readable copies.</p></div></div>
+        </div>
+      </section>
+
+      <section id="waitlist">
+        <div class="waitlist">
+          <div>
+            <div class="sectionLabel">Waitlist</div>
+            <h2>Get early access to iMessage4Me.</h2>
+            <p class="sectionCopy">Join the waitlist for the local Mac app that helps you search and preserve your message history.</p>
+          </div>
+          <form name="waitlist" method="post" action="#">
+            <input type="email" name="email" placeholder="Email" aria-label="Email">
+            <textarea name="reason" placeholder="What do you most want to preserve or search" aria-label="What do you most want to preserve or search"></textarea>
+            <button class="button primary" type="submit">Join the waitlist</button>
+            <p class="formNote">We will only use your email for iMessage4Me updates.</p>
+          </form>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div><strong>iMessage4Me</strong><br>Local Mac app for searching and preserving iMessage history.</div>
+      <div>Privacy · Waitlist · Contact</div>
+    </footer>
+  </div>
+</body>
+</html>

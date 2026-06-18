@@ -1,17 +1,13 @@
-# Never commit the actual Messages database
 *.db
 *.db-shm
 *.db-wal
-
-# Python
 __pycache__/
 *.pyc
 *.pyo
-.env
-
-# macOS
-.DS_Store
-
-# Logs
 *.log
+*.sqlite
+*.sqlite3
+.DS_Store
+.vercel/
+.env
 /tmp/
