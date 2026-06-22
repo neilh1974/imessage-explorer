@@ -2,7 +2,7 @@
 # double-click to launch (right-click > Open the first time if blocked)
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-APP="$SCRIPT_DIR/imessage_explorer.py"
+APP="$SCRIPT_DIR/iMessage4Me.py"
 
 if ! python3 -c "import flask" 2>/dev/null; then
     echo "installing Flask..."

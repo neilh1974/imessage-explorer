@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# iMessage Explorer
+# iMessage4Me
 # search messages by keyword, contact, or date range
 #
 # requires: pip3 install flask
@@ -285,7 +285,7 @@ HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>iMessage Explorer</title>
+<title>iMessage4Me</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text',sans-serif;
@@ -393,7 +393,7 @@ input:focus{border-color:#007aff;background:white;box-shadow:0 0 0 3px rgba(0,12
 
 <div class="hdr">
   <div>
-    <h1>💬 iMessage Explorer</h1>
+    <h1>💬 iMessage4Me</h1>
     <p id="hdr-sub">Loading your messages…</p>
   </div>
 </div>
@@ -786,7 +786,7 @@ else:
                 self.send_response(404); self.end_headers()
 
 if __name__ == "__main__":
-    print(f"\n💬 iMessage Explorer → http://localhost:{PORT}\n")
+    print(f"\n💬 iMessage4Me → http://localhost:{PORT}\n")
     if USE_FLASK:
         app.run(port=PORT, debug=False)
     else:

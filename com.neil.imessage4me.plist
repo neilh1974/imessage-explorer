@@ -3,12 +3,12 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.neil.imessage-explorer</string>
+    <string>com.neil.imessage4me</string>
 
     <key>ProgramArguments</key>
     <array>
         <string>/usr/bin/python3</string>
-        <string>/Users/neilhe/Documents/Claude/Projects/Startup/imessage_explorer.py</string>
+        <string>/Users/neilhe/Documents/Claude/Projects/Startup/iMessage4Me.py</string>
     </array>
 
     <key>RunAtLoad</key>
@@ -18,9 +18,9 @@
     <true/>
 
     <key>StandardOutPath</key>
-    <string>/tmp/imessage-explorer.log</string>
+    <string>/tmp/imessage4me.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/tmp/imessage-explorer.log</string>
+    <string>/tmp/imessage4me.log</string>
 </dict>
 </plist>
