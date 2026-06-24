@@ -3,12 +3,12 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.neil.imessage4me</string>
+    <string>app.imessage4me.local</string>
 
     <key>ProgramArguments</key>
     <array>
         <string>/usr/bin/python3</string>
-        <string>/Users/neilhe/Documents/Claude/Projects/Startup/iMessage4Me.py</string>
+        <string>/path/to/iMessage4Me.py</string>
     </array>
 
     <key>RunAtLoad</key>

@@ -20,10 +20,11 @@ except ImportError:
 APPLE_EPOCH = 978307200
 PORT = 5001
 
-# add your own email/phone here so your messages show as "Me"
+# Add comma separated email addresses or phone numbers with IMESSAGE4ME_MY_HANDLES.
 MY_HANDLES = {
-    "neilhe74@gmail.com",
-    # "+12025551234",
+    handle.strip()
+    for handle in os.environ.get("IMESSAGE4ME_MY_HANDLES", "").split(",")
+    if handle.strip()
 }
 
 
